@@ -1,36 +1,33 @@
-cbuffer ModelViewProjectionConstantBuffer : register(b0)
+cbuffer ConstantBuffer : register(b0)
 {
-    matrix model;
-    matrix view;
-    matrix projection;
+    matrix worldMatrix;
+    matrix viewMatrix;
+    matrix projectionMatrix;
 };
 
-struct VertexShaderInput
+struct VS_INPUT
 {
-    float3 inPos : POSITION;
-    float3 inTexCoord : TEXCOORD; // Changed from float2 to float3
+    float3 position : POSITION;
+    float3 texCoord : TEXCOORD0;
 };
 
-struct PixelShaderInput
+struct PS_INPUT
 {
-    float4 outPosition : SV_POSITION;
-    float3 outTexCoord : TEXCOORD0; // Changed to TEXCOORD0 to match the pixel shader
-    float3 worldPos : TEXCOORD1; // Pass the world position
+    float4 position : SV_POSITION;
+    float3 texCoord : TEXCOORD0;
 };
 
-PixelShaderInput main(VertexShaderInput input)
+PS_INPUT main(VS_INPUT input)
 {
-    PixelShaderInput output;
-    float4 pos = float4(input.inPos, 1.0f);
-
-    float4 worldPos = mul(pos, model);
-
-    pos = mul(worldPos, view);
-    pos = mul(pos, projection);
-    output.outPosition = pos;
-
-    output.outTexCoord = input.inTexCoord; // Pass the 3D texture coordinate
-    output.worldPos = worldPos.xyz; // Pass the world position
-
+    PS_INPUT output;
+    
+    // Transform the position to world space
+    float4 worldPosition = mul(float4(input.position, 1.0f), worldMatrix);
+    float4 viewPosition = mul(worldPosition, viewMatrix);
+    output.position = mul(viewPosition, projectionMatrix);
+    
+    // Pass the texture coordinates to the pixel shader
+    output.texCoord = input.texCoord;
+    
     return output;
 }

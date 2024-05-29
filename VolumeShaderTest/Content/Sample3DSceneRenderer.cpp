@@ -155,7 +155,7 @@ void Sample3DSceneRenderer::Render()
 		nullptr,
 		0
 		);
-	context->GSSetShader(m_geometryShader.Get(), nullptr, 0);
+	//context->GSSetShader(m_geometryShader.Get(), nullptr, 0);
 
 	// Send the constant buffer to the graphics device.
 	context->VSSetConstantBuffers1(
@@ -182,6 +182,9 @@ void Sample3DSceneRenderer::Render()
 	context->OMSetBlendState(m_blendState.Get(), blendFactor, sampleMask);
 
 
+
+	// Step 3: Set the rasterizer state
+	context->RSSetState(m_rasterState.Get());
 	// Draw the objects.
 	context->DrawIndexed(
 		m_indexCount,
@@ -213,9 +216,9 @@ void GenerateNestedCubes(std::vector<VertexPositionColor>& vertices, std::vector
 
 				float startXt = x * cubeSize;
 				float endXt = startXt + cubeSize;
-				float startYt = min.y + y * cubeSize;
+				float startYt = y + y * cubeSize;
 				float endYt = startYt + cubeSize;
-				float startZt = min.z + z * cubeSize;
+				float startZt = z + z * cubeSize;
 				float endZt = startZt + cubeSize;
 
 				// Define vertices for the current cube
@@ -263,7 +266,7 @@ void Sample3DSceneRenderer::CreateDeviceDependentResources()
 	// Load shaders asynchronously.
 	auto loadVSTask = DX::ReadDataAsync(L"SampleVertexShader.cso");
 	auto loadPSTask = DX::ReadDataAsync(L"SamplePixelShader.cso");
-	auto loadGSTask = DX::ReadDataAsync(L"GeometryShader.cso");
+	//auto loadGSTask = DX::ReadDataAsync(L"GeometryShader.cso");
 
 	// After the vertex shader file is loaded, create the shader and input layout.
 	auto createVSTask = loadVSTask.then([this](const std::vector<byte>& fileData) {
@@ -314,18 +317,18 @@ void Sample3DSceneRenderer::CreateDeviceDependentResources()
 			);
 	});
 
-	auto createGSTask = loadGSTask.then([this](const std::vector<byte>& fileData) {
-		DX::ThrowIfFailed(
-			m_deviceResources->GetD3DDevice()->CreateGeometryShader(
-				&fileData[0],
-				fileData.size(),
-				nullptr,
-				&m_geometryShader
-			)
-		);
-	});
+	//auto createGSTask = loadGSTask.then([this](const std::vector<byte>& fileData) {
+	//	DX::ThrowIfFailed(
+	//		m_deviceResources->GetD3DDevice()->CreateGeometryShader(
+	//			&fileData[0],
+	//			fileData.size(),
+	//			nullptr,
+	//			&m_geometryShader
+	//		)
+	//	);
+	//});
 	// Once both shaders are loaded, create the mesh.
-	auto createCubeTask = (createPSTask && createVSTask && createGSTask).then([this] () {
+	auto createCubeTask = (createPSTask && createVSTask).then([this] () {
 
 		std::vector<VertexPositionColor> vertices;
 		std::vector<unsigned int> indices;
@@ -420,12 +423,12 @@ void Sample3DSceneRenderer::CreateVolumetricTexture()
 		{
 			for (float x = 0; x < textureWidth; ++x)
 			{
-				float dx = centerX - x;
-				float dy = y - centerY;
-				float dz = z - centerZ;
+				float dx = fabsf(centerX - x);;
+				float dy = fabsf(centerY - y);
+				float dz = fabsf(centerZ - z);
 				float distance = sqrt((dx * dx )+ (dy * dy) + (dz * dz));
 
-				if (x < textureWidth/2)
+				if(x<y)
 				{
 					float value = (distance < radius) ? 1.0f : 0.0f; // Use 1.0f instead of 255 for float format
 					int index = (z * textureHeight * textureWidth + y * textureWidth + x) * 4;
@@ -437,10 +440,10 @@ void Sample3DSceneRenderer::CreateVolumetricTexture()
 				else
 				{
 					int index = (z * textureHeight * textureWidth + y * textureWidth + x) * 4;
-					textureData[index] = 0.0f; // B
-					textureData[index + 1] = 0.0f; // Green
-					textureData[index + 2] = 0.0f; // R
-					textureData[index + 3] = 0.0f; // Alpha
+					textureData[index] = 0.0f; // R
+					textureData[index + 1] = 0.5f; // Green
+					textureData[index + 2] = 0.6f; // B
+					textureData[index + 3] = 0.8f; // Alpha
 				}
 			}
 		}
@@ -469,17 +472,11 @@ void Sample3DSceneRenderer::CreateVolumetricTexture()
 
 	D3D11_SAMPLER_DESC samplerDesc;
 	ZeroMemory(&samplerDesc, sizeof(samplerDesc));
-	samplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;  // Linear filtering
-	samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;    // Clamp addressing mode for U
-	samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;    // Clamp addressing mode for V
-	samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;    // Clamp addressing mode for W
-	samplerDesc.MipLODBias = 0.0f;
-	samplerDesc.MaxAnisotropy = 1;
-	samplerDesc.ComparisonFunc = D3D11_COMPARISON_ALWAYS;
-	samplerDesc.BorderColor[0] = 0;
-	samplerDesc.BorderColor[1] = 0;
-	samplerDesc.BorderColor[2] = 0;
-	samplerDesc.BorderColor[3] = 0;
+	samplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+	samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+	samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+	samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+	samplerDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
 	samplerDesc.MinLOD = 0;
 	samplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
 
@@ -495,7 +492,7 @@ void Sample3DSceneRenderer::CreateVolumetricTexture()
 	blendDesc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
 	blendDesc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
 	blendDesc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
-	blendDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
+	blendDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
 	blendDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
 	blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
 
@@ -505,6 +502,29 @@ void Sample3DSceneRenderer::CreateVolumetricTexture()
 			&m_blendState
 		)
 	);
+	// Step 1: Define the rasterizer state description
+	D3D11_RASTERIZER_DESC rasterDesc;
+	ZeroMemory(&rasterDesc, sizeof(rasterDesc));
+	rasterDesc.FillMode = D3D11_FILL_SOLID; // or D3D11_FILL_WIREFRAME if you want to see wireframe
+	rasterDesc.CullMode = D3D11_CULL_NONE;  // Disable backface culling
+	rasterDesc.FrontCounterClockwise = false;
+	rasterDesc.DepthBias = 0;
+	rasterDesc.SlopeScaledDepthBias = 0.0f;
+	rasterDesc.DepthBiasClamp = 0.0f;
+	rasterDesc.DepthClipEnable = true;
+	rasterDesc.ScissorEnable = false;
+	rasterDesc.MultisampleEnable = false;
+	rasterDesc.AntialiasedLineEnable = false;
+
+	// Step 2: Create the rasterizer state
+	hr = m_deviceResources->GetD3DDevice()->CreateRasterizerState(&rasterDesc, &m_rasterState);
+	if (FAILED(hr))
+	{
+		// Handle the error (e.g., by logging or throwing an exception)
+	}
+
+	// Remember to release the rasterizer state when done
+
 }
 
 void Sample3DSceneRenderer::ReleaseDeviceDependentResources()
@@ -516,4 +536,5 @@ void Sample3DSceneRenderer::ReleaseDeviceDependentResources()
 	m_constantBuffer.Reset();
 	m_vertexBuffer.Reset();
 	m_indexBuffer.Reset();
+
 }

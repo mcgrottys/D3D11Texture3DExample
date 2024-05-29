@@ -42,10 +42,12 @@ namespace VolumeShaderTest
 		Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>		m_volumeTextureView;
 		Microsoft::WRL::ComPtr<ID3D11SamplerState>		m_samplerState;
 		Microsoft::WRL::ComPtr<ID3D11BlendState>		m_blendState;
+		Microsoft::WRL::ComPtr<ID3D11RasterizerState>		m_rasterState;
 
 		// System resources for cube geometry.
 		ModelViewProjectionConstantBuffer	m_constantBufferData;
 		uint32	m_indexCount;
+		uint32	m_vertexCount;
 
 		// Variables used with the rendering loop.
 		bool	m_loadingComplete;
