@@ -85,4 +85,9 @@
   <ItemGroup>
     <Page Include="DirectXPage.xaml" />
   </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="Content\GeometryShader.hlsl">
+      <Filter>Content</Filter>
+    </FxCompile>
+  </ItemGroup>
 </Project>

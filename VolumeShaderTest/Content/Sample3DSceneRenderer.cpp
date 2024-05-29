@@ -141,7 +141,7 @@ void Sample3DSceneRenderer::Render()
 
 	context->IASetIndexBuffer(
 		m_indexBuffer.Get(),
-		DXGI_FORMAT_R16_UINT, // Each index is one 16-bit unsigned integer (short).
+		DXGI_FORMAT_R32_UINT, // Each index is one 16-bit unsigned integer (short).
 		0
 		);
 
@@ -155,6 +155,7 @@ void Sample3DSceneRenderer::Render()
 		nullptr,
 		0
 		);
+	context->GSSetShader(m_geometryShader.Get(), nullptr, 0);
 
 	// Send the constant buffer to the graphics device.
 	context->VSSetConstantBuffers1(
@@ -189,11 +190,80 @@ void Sample3DSceneRenderer::Render()
 		);
 }
 
+void GenerateNestedCubes(std::vector<VertexPositionColor>& vertices, std::vector<unsigned int>& indices,
+	XMFLOAT3 min, XMFLOAT3 max, int level, uint32& currentIndex) {
+
+
+	float cubeCntWidth = std::pow(2,level);
+	float cubeSize = 1.0f / cubeCntWidth;
+	unsigned int indexOffset = 0;
+
+	for (float z = 0; z < cubeCntWidth; z++)
+	{
+		for (float y = 0; y < cubeCntWidth; y++)
+		{
+			for (float x = 0; x < cubeCntWidth; x++)
+			{
+				float startX = min.x + x * cubeSize;
+				float endX = startX + cubeSize;
+				float startY = min.y + y * cubeSize;
+				float endY = startY + cubeSize;
+				float startZ = min.z + z * cubeSize;
+				float endZ = startZ + cubeSize;
+
+				float startXt = x * cubeSize;
+				float endXt = startXt + cubeSize;
+				float startYt = min.y + y * cubeSize;
+				float endYt = startYt + cubeSize;
+				float startZt = min.z + z * cubeSize;
+				float endZt = startZt + cubeSize;
+
+				// Define vertices for the current cube
+				vertices.push_back({ XMFLOAT3(startX, startY, startZ), XMFLOAT3(startXt, startYt, startZt)});
+				vertices.push_back({ XMFLOAT3(startX, startY,  endZ), XMFLOAT3(startXt, startYt, endZt) });
+				vertices.push_back({ XMFLOAT3(startX,  endY, startZ), XMFLOAT3(startXt, endYt, startZt) });
+				vertices.push_back({ XMFLOAT3(startX, endY, endZ), XMFLOAT3(startXt, endYt, endZt) });
+				vertices.push_back({ XMFLOAT3(endX, startY, startZ), XMFLOAT3(endXt, startYt, startZt) });
+				vertices.push_back({ XMFLOAT3(endX, startY, endZ), XMFLOAT3(endXt, startYt, endZt) });
+				vertices.push_back({ XMFLOAT3(endX, endY, startZ), XMFLOAT3(endXt, endYt, startZt) });
+				vertices.push_back({ XMFLOAT3(endX, endY, endZ), XMFLOAT3(endXt, endYt, endZt) });
+
+				// Define indices for the current cube
+				unsigned int cubeIndices[] =
+				{
+					indexOffset,2 + indexOffset,  1+indexOffset, // -x
+					1+ indexOffset,2+ indexOffset,3+ indexOffset,
+
+					4+ indexOffset,5+ indexOffset,6+ indexOffset, // +x
+					5+ indexOffset,7+ indexOffset,6+ indexOffset,
+
+					0+ indexOffset,1+ indexOffset,5+ indexOffset, // -y
+					0+ indexOffset,5+ indexOffset,4+ indexOffset,
+
+					2+ indexOffset,6+ indexOffset,7+ indexOffset, // +y
+					2+ indexOffset,7+ indexOffset,3+ indexOffset,
+
+					0+ indexOffset,4+ indexOffset,6+ indexOffset, // -z
+					0+ indexOffset,6+ indexOffset,2+ indexOffset,
+
+					1+ indexOffset,3+ indexOffset,7+ indexOffset, // +z
+					1+ indexOffset,7+ indexOffset,5+ indexOffset,
+				};
+
+				indices.insert(indices.end(), std::begin(cubeIndices), std::end(cubeIndices));
+
+				indexOffset = vertices.size();
+			}
+		}
+	}
+	currentIndex = indices.size();
+}
 void Sample3DSceneRenderer::CreateDeviceDependentResources()
 {
 	// Load shaders asynchronously.
 	auto loadVSTask = DX::ReadDataAsync(L"SampleVertexShader.cso");
 	auto loadPSTask = DX::ReadDataAsync(L"SamplePixelShader.cso");
+	auto loadGSTask = DX::ReadDataAsync(L"GeometryShader.cso");
 
 	// After the vertex shader file is loaded, create the shader and input layout.
 	auto createVSTask = loadVSTask.then([this](const std::vector<byte>& fileData) {
@@ -209,7 +279,7 @@ void Sample3DSceneRenderer::CreateDeviceDependentResources()
 		static const D3D11_INPUT_ELEMENT_DESC vertexDesc[] =
 		{
 			{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-			{ "TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+			{ "TEXCOORD", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		};
 
 		DX::ThrowIfFailed(
@@ -244,27 +314,44 @@ void Sample3DSceneRenderer::CreateDeviceDependentResources()
 			);
 	});
 
+	auto createGSTask = loadGSTask.then([this](const std::vector<byte>& fileData) {
+		DX::ThrowIfFailed(
+			m_deviceResources->GetD3DDevice()->CreateGeometryShader(
+				&fileData[0],
+				fileData.size(),
+				nullptr,
+				&m_geometryShader
+			)
+		);
+	});
 	// Once both shaders are loaded, create the mesh.
-	auto createCubeTask = (createPSTask && createVSTask).then([this] () {
+	auto createCubeTask = (createPSTask && createVSTask && createGSTask).then([this] () {
 
-		// Load mesh vertices. Each vertex has a position and a color.
-		static const VertexPositionColor cubeVertices[] = 
-		{
-			{XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f)},
-			{XMFLOAT3(-0.5f, -0.5f,  0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f)},
-			{XMFLOAT3(-0.5f,  0.5f, -0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f)},
-			{XMFLOAT3(-0.5f,  0.5f,  0.5f), XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f)},
-			{XMFLOAT3( 0.5f, -0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f)},
-			{XMFLOAT3( 0.5f, -0.5f,  0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f)},
-			{XMFLOAT3( 0.5f,  0.5f, -0.5f), XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f)},
-			{XMFLOAT3( 0.5f,  0.5f,  0.5f), XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f)},
-		};
+		std::vector<VertexPositionColor> vertices;
+		std::vector<unsigned int> indices;
+		unsigned int currentIndex = 0;
+		GenerateNestedCubes(vertices, indices, XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT3(0.5f, 0.5f, 0.5f), 0, m_indexCount);
+
+		//// Load mesh vertices. Each vertex has a position and a color.
+		//static const VertexPositionColor cubeVertices[] = 
+		//{
+		//	{XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f)},
+		//	{XMFLOAT3(-0.5f, -0.5f,  0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f)},
+		//	{XMFLOAT3(-0.5f,  0.5f, -0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f)},
+		//	{XMFLOAT3(-0.5f,  0.5f,  0.5f), XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f)},
+		//	{XMFLOAT3( 0.5f, -0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f)},
+		//	{XMFLOAT3( 0.5f, -0.5f,  0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f)},
+		//	{XMFLOAT3( 0.5f,  0.5f, -0.5f), XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f)},
+		//	{XMFLOAT3( 0.5f,  0.5f,  0.5f), XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f)},
+		//};
+
+				// Load mesh vertices. Each vertex has a position and a color.
 
 		D3D11_SUBRESOURCE_DATA vertexBufferData = {0};
-		vertexBufferData.pSysMem = cubeVertices;
+		vertexBufferData.pSysMem = vertices.data();
 		vertexBufferData.SysMemPitch = 0;
 		vertexBufferData.SysMemSlicePitch = 0;
-		CD3D11_BUFFER_DESC vertexBufferDesc(sizeof(cubeVertices), D3D11_BIND_VERTEX_BUFFER);
+		CD3D11_BUFFER_DESC vertexBufferDesc(vertices.size() * sizeof(VertexPositionColor), D3D11_BIND_VERTEX_BUFFER);
 		DX::ThrowIfFailed(
 			m_deviceResources->GetD3DDevice()->CreateBuffer(
 				&vertexBufferDesc,
@@ -278,34 +365,12 @@ void Sample3DSceneRenderer::CreateDeviceDependentResources()
 		// For example: 0,2,1 means that the vertices with indexes
 		// 0, 2 and 1 from the vertex buffer compose the 
 		// first triangle of this mesh.
-		static const unsigned short cubeIndices [] =
-		{
-			0,2,1, // -x
-			1,2,3,
-
-			4,5,6, // +x
-			5,7,6,
-
-			0,1,5, // -y
-			0,5,4,
-
-			2,6,7, // +y
-			2,7,3,
-
-			0,4,6, // -z
-			0,6,2,
-
-			1,3,7, // +z
-			1,7,5,
-		};
-
-		m_indexCount = ARRAYSIZE(cubeIndices);
 
 		D3D11_SUBRESOURCE_DATA indexBufferData = {0};
-		indexBufferData.pSysMem = cubeIndices;
+		indexBufferData.pSysMem = indices.data();
 		indexBufferData.SysMemPitch = 0;
 		indexBufferData.SysMemSlicePitch = 0;
-		CD3D11_BUFFER_DESC indexBufferDesc(sizeof(cubeIndices), D3D11_BIND_INDEX_BUFFER);
+		CD3D11_BUFFER_DESC indexBufferDesc(indices.size() * sizeof(unsigned int), D3D11_BIND_INDEX_BUFFER);
 		DX::ThrowIfFailed(
 			m_deviceResources->GetD3DDevice()->CreateBuffer(
 				&indexBufferDesc,
@@ -355,17 +420,28 @@ void Sample3DSceneRenderer::CreateVolumetricTexture()
 		{
 			for (float x = 0; x < textureWidth; ++x)
 			{
-				float dx = x - centerX;
+				float dx = centerX - x;
 				float dy = y - centerY;
 				float dz = z - centerZ;
-				float distance = sqrt(dx * dx + dy * dy + dz * dz);
+				float distance = sqrt((dx * dx )+ (dy * dy) + (dz * dz));
 
-				float value = (distance < radius) ? 1.0f : 0.0f; // Use 1.0f instead of 255 for float format
-				int index = (z * textureHeight * textureWidth + y * textureWidth + x) * 4;
-				textureData[index] = x/ textureWidth;     // B
-				textureData[index + 1] = 0.0f; // Green
-				textureData[index + 2] = 0.0f; // R
-				textureData[index + 3] = 0.001f + (x*0.00001f); // Alpha, scaled to float range 0.0f to 1.0f
+				if (x < textureWidth/2)
+				{
+					float value = (distance < radius) ? 1.0f : 0.0f; // Use 1.0f instead of 255 for float format
+					int index = (z * textureHeight * textureWidth + y * textureWidth + x) * 4;
+					textureData[index] = 0.4f;     // R
+					textureData[index + 1] = 1.0f; // Green
+					textureData[index + 2] = 0.3f; // B
+					textureData[index + 3] = 0.8f; // Alpha, scaled to float range 0.0f to 1.0f
+				}
+				else
+				{
+					int index = (z * textureHeight * textureWidth + y * textureWidth + x) * 4;
+					textureData[index] = 0.0f; // B
+					textureData[index + 1] = 0.0f; // Green
+					textureData[index + 2] = 0.0f; // R
+					textureData[index + 3] = 0.0f; // Alpha
+				}
 			}
 		}
 	}
