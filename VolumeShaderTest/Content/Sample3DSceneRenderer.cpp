@@ -53,16 +53,20 @@ void Sample3DSceneRenderer::CreateWindowSizeDependentResources()
 	XMMATRIX orientationMatrix = XMLoadFloat4x4(&orientation);
 
 	XMStoreFloat4x4(
-		&m_constantBufferData.projection,
+		&m_constantBufferData.projectionMatrix,
 		XMMatrixTranspose(perspectiveMatrix * orientationMatrix)
 		);
+
+
 
 	// Eye is at (0,0.7,1.5), looking at point (0,-0.1,0) with the up-vector along the y-axis.
 	static const XMVECTORF32 eye = { 0.0f, 0.7f, 1.5f, 0.0f };
 	static const XMVECTORF32 at = { 0.0f, -0.1f, 0.0f, 0.0f };
 	static const XMVECTORF32 up = { 0.0f, 1.0f, 0.0f, 0.0f };
 
-	XMStoreFloat4x4(&m_constantBufferData.view, XMMatrixTranspose(XMMatrixLookAtRH(eye, at, up)));
+	XMStoreFloat4x4(&m_constantBufferData.viewMatrix, XMMatrixTranspose(XMMatrixLookAtRH(eye, at, up)));
+
+
 }
 
 // Called once per frame, rotates the cube and calculates the model and view matrices.
@@ -83,7 +87,18 @@ void Sample3DSceneRenderer::Update(DX::StepTimer const& timer)
 void Sample3DSceneRenderer::Rotate(float radians)
 {
 	// Prepare to pass the updated model matrix to the shader
-	XMStoreFloat4x4(&m_constantBufferData.model, XMMatrixTranspose(XMMatrixRotationY(radians)));
+	XMStoreFloat4x4(&m_constantBufferData.worldMatrix, XMMatrixTranspose(XMMatrixRotationY(radians)));
+	auto viewMatrix = XMLoadFloat4x4(&m_constantBufferData.viewMatrix);
+	auto projMatrix = XMLoadFloat4x4(&m_constantBufferData.projectionMatrix);
+	auto worldMatrix = XMLoadFloat4x4(&m_constantBufferData.worldMatrix);
+
+	auto viewproj = XMMatrixMultiply(projMatrix, viewMatrix);
+	auto wvp = XMMatrixMultiply(viewproj ,worldMatrix);
+
+	XMStoreFloat4x4(&m_constantBufferData.worldview_projection, wvp);
+	XMStoreFloat4x4(&m_constantBufferData.inv_worldview_projection, XMMatrixInverse(nullptr, wvp));
+	auto ttest = XMMatrixMultiply(XMLoadFloat4x4(&m_constantBufferData.inv_worldview_projection), wvp);
+	auto stoppp = "";
 }
 
 void Sample3DSceneRenderer::StartTracking()
@@ -175,6 +190,14 @@ void Sample3DSceneRenderer::Render()
 
 	context->PSSetShaderResources(0, 1, m_volumeTextureView.GetAddressOf());
 	context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
+	// Send the constant buffer to the graphics device.
+	context->PSSetConstantBuffers1(
+		0,
+		1,
+		m_constantBuffer.GetAddressOf(),
+		nullptr,
+		nullptr
+	);
 
 	// Bind the blend state
 	float blendFactor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
