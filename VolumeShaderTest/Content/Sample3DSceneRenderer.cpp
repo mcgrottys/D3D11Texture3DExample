@@ -20,53 +20,52 @@ Sample3DSceneRenderer::Sample3DSceneRenderer(const std::shared_ptr<DX::DeviceRes
 	CreateWindowSizeDependentResources();
 }
 
-// Initializes view parameters when the window size changes.
 void Sample3DSceneRenderer::CreateWindowSizeDependentResources()
 {
 	Size outputSize = m_deviceResources->GetOutputSize();
 	float aspectRatio = outputSize.Width / outputSize.Height;
 	float fovAngleY = 70.0f * XM_PI / 180.0f;
 
-	// This is a simple example of change that can be made when the app is in
-	// portrait or snapped view.
+	// Adjust FOV for portrait or snapped view.
 	if (aspectRatio < 1.0f)
 	{
 		fovAngleY *= 2.0f;
 	}
 
-	// Note that the OrientationTransform3D matrix is post-multiplied here
-	// in order to correctly orient the scene to match the display orientation.
-	// This post-multiplication step is required for any draw calls that are
-	// made to the swap chain render target. For draw calls to other targets,
-	// this transform should not be applied.
-
-	// This sample makes use of a right-handed coordinate system using row-major matrices.
-	XMMATRIX perspectiveMatrix = XMMatrixPerspectiveFovRH(
+	// Right-handed coordinate system using row-major matrices.
+	XMMATRIX perspectiveMatrix = XMMatrixPerspectiveFovLH(
 		fovAngleY,
 		aspectRatio,
 		0.01f,
 		100.0f
-		);
+	);
 
 	XMFLOAT4X4 orientation = m_deviceResources->GetOrientationTransform3D();
-
 	XMMATRIX orientationMatrix = XMLoadFloat4x4(&orientation);
 
-	XMStoreFloat4x4(
-		&m_constantBufferData.projectionMatrix,
-		XMMatrixTranspose(perspectiveMatrix * orientationMatrix)
-		);
+	// Combine perspective and orientation matrices.
+	XMMATRIX projectionMatrix = perspectiveMatrix * orientationMatrix;
+	XMStoreFloat4x4(&m_constantBufferData.projectionMatrix, XMMatrixTranspose(projectionMatrix));
 
-
-
-	// Eye is at (0,0.7,1.5), looking at point (0,-0.1,0) with the up-vector along the y-axis.
-	static const XMVECTORF32 eye = { 0.0f, 0.7f, 1.5f, 0.0f };
+	// Define the view matrix.
+	static const XMVECTORF32 eye = { 0.0f, 0.7f, -1.5f, 0.0f };
 	static const XMVECTORF32 at = { 0.0f, -0.1f, 0.0f, 0.0f };
 	static const XMVECTORF32 up = { 0.0f, 1.0f, 0.0f, 0.0f };
 
-	XMStoreFloat4x4(&m_constantBufferData.viewMatrix, XMMatrixTranspose(XMMatrixLookAtRH(eye, at, up)));
+	XMMATRIX viewMatrix = XMMatrixLookAtLH(eye, at, up);
+	XMStoreFloat4x4(&m_constantBufferData.viewMatrix, XMMatrixTranspose(viewMatrix));
 
+	// Define the world matrix.
+	XMMATRIX worldMatrix = XMMatrixIdentity();
+	XMStoreFloat4x4(&m_constantBufferData.worldMatrix, XMMatrixTranspose(worldMatrix));
 
+	// Calculate the World-View-Projection matrix.
+	XMMATRIX worldViewProjectionMatrix = worldMatrix * viewMatrix * projectionMatrix;
+	XMStoreFloat4x4(&m_constantBufferData.worldViewProjectionMatrix, XMMatrixTranspose(worldViewProjectionMatrix));
+
+	// Calculate the inverse World-View-Projection matrix.
+	XMMATRIX invWorldViewProjectionMatrix = XMMatrixInverse(nullptr, worldViewProjectionMatrix);
+	XMStoreFloat4x4(&m_constantBufferData.invWorldViewProjectionMatrix, XMMatrixTranspose(invWorldViewProjectionMatrix));
 }
 
 // Called once per frame, rotates the cube and calculates the model and view matrices.
@@ -79,7 +78,7 @@ void Sample3DSceneRenderer::Update(DX::StepTimer const& timer)
 		double totalRotation = timer.GetTotalSeconds() * radiansPerSecond;
 		float radians = static_cast<float>(fmod(totalRotation, XM_2PI));
 
-		Rotate(radians);
+		//Rotate(radians);
 	}
 }
 
@@ -95,10 +94,8 @@ void Sample3DSceneRenderer::Rotate(float radians)
 	auto viewproj = XMMatrixMultiply(projMatrix, viewMatrix);
 	auto wvp = XMMatrixMultiply(viewproj ,worldMatrix);
 
-	XMStoreFloat4x4(&m_constantBufferData.worldview_projection, wvp);
-	XMStoreFloat4x4(&m_constantBufferData.inv_worldview_projection, XMMatrixInverse(nullptr, wvp));
-	auto ttest = XMMatrixMultiply(XMLoadFloat4x4(&m_constantBufferData.inv_worldview_projection), wvp);
-	auto stoppp = "";
+	XMStoreFloat4x4(&m_constantBufferData.worldViewProjectionMatrix, wvp);
+	XMStoreFloat4x4(&m_constantBufferData.invWorldViewProjectionMatrix, XMMatrixInverse(nullptr, wvp));
 }
 
 void Sample3DSceneRenderer::StartTracking()
@@ -202,12 +199,12 @@ void Sample3DSceneRenderer::Render()
 	// Bind the blend state
 	float blendFactor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
 	UINT sampleMask = 0xffffffff;
-	context->OMSetBlendState(m_blendState.Get(), blendFactor, sampleMask);
+	//context->OMSetBlendState(m_blendState.Get(), blendFactor, sampleMask);
 
 
 
 	// Step 3: Set the rasterizer state
-	context->RSSetState(m_rasterState.Get());
+	//context->RSSetState(m_rasterState.Get());
 	// Draw the objects.
 	context->DrawIndexed(
 		m_indexCount,
@@ -503,48 +500,48 @@ void Sample3DSceneRenderer::CreateVolumetricTexture()
 	samplerDesc.MinLOD = 0;
 	samplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
 
-	// Step 2: Create the sampler state
-	HRESULT hr = m_deviceResources->GetD3DDevice()->CreateSamplerState(&samplerDesc, &m_samplerState);
-	if (FAILED(hr)) {
-		// Handle the error (e.g., log it and clean up resources)
-	}
-	// Create the blend state for transparency
-	D3D11_BLEND_DESC blendDesc = {};
-	blendDesc.RenderTarget[0].BlendEnable = TRUE;
-	blendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
-	blendDesc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
-	blendDesc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
-	blendDesc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
-	blendDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
-	blendDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
-	blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+	//// Step 2: Create the sampler state
+	//HRESULT hr = m_deviceResources->GetD3DDevice()->CreateSamplerState(&samplerDesc, &m_samplerState);
+	//if (FAILED(hr)) {
+	//	// Handle the error (e.g., log it and clean up resources)
+	//}
+	//// Create the blend state for transparency
+	//D3D11_BLEND_DESC blendDesc = {};
+	//blendDesc.RenderTarget[0].BlendEnable = TRUE;
+	//blendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+	//blendDesc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+	//blendDesc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+	//blendDesc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+	//blendDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+	//blendDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+	//blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
 
-	DX::ThrowIfFailed(
-		m_deviceResources->GetD3DDevice()->CreateBlendState(
-			&blendDesc,
-			&m_blendState
-		)
-	);
-	// Step 1: Define the rasterizer state description
-	D3D11_RASTERIZER_DESC rasterDesc;
-	ZeroMemory(&rasterDesc, sizeof(rasterDesc));
-	rasterDesc.FillMode = D3D11_FILL_SOLID; // or D3D11_FILL_WIREFRAME if you want to see wireframe
-	rasterDesc.CullMode = D3D11_CULL_NONE;  // Disable backface culling
-	rasterDesc.FrontCounterClockwise = false;
-	rasterDesc.DepthBias = 0;
-	rasterDesc.SlopeScaledDepthBias = 0.0f;
-	rasterDesc.DepthBiasClamp = 0.0f;
-	rasterDesc.DepthClipEnable = true;
-	rasterDesc.ScissorEnable = false;
-	rasterDesc.MultisampleEnable = false;
-	rasterDesc.AntialiasedLineEnable = false;
+	//DX::ThrowIfFailed(
+	//	m_deviceResources->GetD3DDevice()->CreateBlendState(
+	//		&blendDesc,
+	//		&m_blendState
+	//	)
+	//);
+	//// Step 1: Define the rasterizer state description
+	//D3D11_RASTERIZER_DESC rasterDesc;
+	//ZeroMemory(&rasterDesc, sizeof(rasterDesc));
+	//rasterDesc.FillMode = D3D11_FILL_SOLID; // or D3D11_FILL_WIREFRAME if you want to see wireframe
+	//rasterDesc.CullMode = D3D11_CULL_NONE;  // Disable backface culling
+	//rasterDesc.FrontCounterClockwise = false;
+	//rasterDesc.DepthBias = 0;
+	//rasterDesc.SlopeScaledDepthBias = 0.0f;
+	//rasterDesc.DepthBiasClamp = 0.0f;
+	//rasterDesc.DepthClipEnable = true;
+	//rasterDesc.ScissorEnable = false;
+	//rasterDesc.MultisampleEnable = false;
+	//rasterDesc.AntialiasedLineEnable = false;
 
-	// Step 2: Create the rasterizer state
-	hr = m_deviceResources->GetD3DDevice()->CreateRasterizerState(&rasterDesc, &m_rasterState);
-	if (FAILED(hr))
-	{
-		// Handle the error (e.g., by logging or throwing an exception)
-	}
+	//// Step 2: Create the rasterizer state
+	//hr = m_deviceResources->GetD3DDevice()->CreateRasterizerState(&rasterDesc, &m_rasterState);
+	//if (FAILED(hr))
+	//{
+	//	// Handle the error (e.g., by logging or throwing an exception)
+	//}
 
 	// Remember to release the rasterizer state when done
 

@@ -8,8 +8,8 @@ namespace VolumeShaderTest
 		DirectX::XMFLOAT4X4 worldMatrix;
 		DirectX::XMFLOAT4X4 viewMatrix;
 		DirectX::XMFLOAT4X4 projectionMatrix;
-		DirectX::XMFLOAT4X4 worldview_projection;
-		DirectX::XMFLOAT4X4 inv_worldview_projection;
+		DirectX::XMFLOAT4X4 worldViewProjectionMatrix;
+		DirectX::XMFLOAT4X4 invWorldViewProjectionMatrix;
 	};
 
 	// Used to send per-vertex data to the vertex shader.
