@@ -44,28 +44,28 @@ void Sample3DSceneRenderer::CreateWindowSizeDependentResources()
 	XMMATRIX orientationMatrix = XMLoadFloat4x4(&orientation);
 
 	// Combine perspective and orientation matrices.
-	XMMATRIX projectionMatrix = perspectiveMatrix * orientationMatrix;
-	XMStoreFloat4x4(&m_constantBufferData.projectionMatrix, XMMatrixTranspose(projectionMatrix));
+	m_projectionMatrix = perspectiveMatrix * orientationMatrix;
+	XMStoreFloat4x4(&m_constantBufferData.projectionMatrix, XMMatrixTranspose(m_projectionMatrix));
 
 	// Define the view matrix.
 	static const XMVECTORF32 eye = { 0.0f, 0.7f, -1.5f, 0.0f };
 	static const XMVECTORF32 at = { 0.0f, -0.1f, 0.0f, 0.0f };
 	static const XMVECTORF32 up = { 0.0f, 1.0f, 0.0f, 0.0f };
 
-	XMMATRIX viewMatrix = XMMatrixLookAtLH(eye, at, up);
-	XMStoreFloat4x4(&m_constantBufferData.viewMatrix, XMMatrixTranspose(viewMatrix));
+	m_viewMatrix = XMMatrixLookAtLH(eye, at, up);
+	XMStoreFloat4x4(&m_constantBufferData.viewMatrix, XMMatrixTranspose(m_viewMatrix));
 
 	// Define the world matrix.
-	XMMATRIX worldMatrix = XMMatrixIdentity();
-	XMStoreFloat4x4(&m_constantBufferData.worldMatrix, XMMatrixTranspose(worldMatrix));
+	m_worldMatrix = XMMatrixIdentity();
+	XMStoreFloat4x4(&m_constantBufferData.worldMatrix, XMMatrixTranspose(m_worldMatrix));
 
 	// Calculate the World-View-Projection matrix.
-	XMMATRIX worldViewProjectionMatrix = worldMatrix * viewMatrix * projectionMatrix;
-	XMStoreFloat4x4(&m_constantBufferData.worldViewProjectionMatrix, XMMatrixTranspose(worldViewProjectionMatrix));
+	m_worldViewProjectionMatrix = XMMatrixMultiply(XMMatrixMultiply(m_worldMatrix, m_viewMatrix), m_projectionMatrix);
+	XMStoreFloat4x4(&m_constantBufferData.worldViewProjectionMatrix, XMMatrixTranspose(m_worldViewProjectionMatrix));
 
 	// Calculate the inverse World-View-Projection matrix.
-	XMMATRIX invWorldViewProjectionMatrix = XMMatrixInverse(nullptr, worldViewProjectionMatrix);
-	XMStoreFloat4x4(&m_constantBufferData.invWorldViewProjectionMatrix, XMMatrixTranspose(invWorldViewProjectionMatrix));
+	m_invWorldViewProjectionMatrix = XMMatrixInverse(nullptr, m_worldViewProjectionMatrix);
+	XMStoreFloat4x4(&m_constantBufferData.invWorldViewProjectionMatrix, XMMatrixTranspose(m_invWorldViewProjectionMatrix));
 }
 
 // Called once per frame, rotates the cube and calculates the model and view matrices.
@@ -86,16 +86,16 @@ void Sample3DSceneRenderer::Update(DX::StepTimer const& timer)
 void Sample3DSceneRenderer::Rotate(float radians)
 {
 	// Prepare to pass the updated model matrix to the shader
-	XMStoreFloat4x4(&m_constantBufferData.worldMatrix, XMMatrixTranspose(XMMatrixRotationY(radians)));
-	auto viewMatrix = XMLoadFloat4x4(&m_constantBufferData.viewMatrix);
-	auto projMatrix = XMLoadFloat4x4(&m_constantBufferData.projectionMatrix);
-	auto worldMatrix = XMLoadFloat4x4(&m_constantBufferData.worldMatrix);
+	m_worldMatrix = XMMatrixRotationY(radians);
+	XMStoreFloat4x4(&m_constantBufferData.worldMatrix, XMMatrixTranspose(m_worldMatrix));
 
-	auto viewproj = XMMatrixMultiply(projMatrix, viewMatrix);
-	auto wvp = XMMatrixMultiply(viewproj ,worldMatrix);
+	// Calculate the World-View-Projection matrix.
+	m_worldViewProjectionMatrix = XMMatrixMultiply(XMMatrixMultiply(m_worldMatrix, m_viewMatrix), m_projectionMatrix);
+	XMStoreFloat4x4(&m_constantBufferData.worldViewProjectionMatrix, XMMatrixTranspose(m_worldViewProjectionMatrix));
 
-	XMStoreFloat4x4(&m_constantBufferData.worldViewProjectionMatrix, wvp);
-	XMStoreFloat4x4(&m_constantBufferData.invWorldViewProjectionMatrix, XMMatrixInverse(nullptr, wvp));
+	// Calculate the inverse World-View-Projection matrix.
+	m_invWorldViewProjectionMatrix = XMMatrixInverse(nullptr, m_worldViewProjectionMatrix);
+	XMStoreFloat4x4(&m_constantBufferData.invWorldViewProjectionMatrix, XMMatrixTranspose(m_invWorldViewProjectionMatrix));
 }
 
 void Sample3DSceneRenderer::StartTracking()
@@ -217,7 +217,7 @@ void GenerateNestedCubes(std::vector<VertexPositionColor>& vertices, std::vector
 	XMFLOAT3 min, XMFLOAT3 max, int level, uint32& currentIndex) {
 
 
-	float cubeCntWidth = std::pow(2,level);
+	float cubeCntWidth = 1.0f;
 	float cubeSize = 1.0f / cubeCntWidth;
 	unsigned int indexOffset = 0;
 
@@ -474,8 +474,6 @@ void Sample3DSceneRenderer::CreateVolumetricTexture()
 	initialData.SysMemPitch = textureWidth * 4 * sizeof(float);
 	initialData.SysMemSlicePitch = textureWidth * textureHeight * 4 * sizeof(float);
 
-	m_volumeTexture;
-	m_volumeTextureView;
 	DX::ThrowIfFailed(
 		m_deviceResources->GetD3DDevice()->CreateTexture3D(&textureDesc, &initialData, &m_volumeTexture)
 	);

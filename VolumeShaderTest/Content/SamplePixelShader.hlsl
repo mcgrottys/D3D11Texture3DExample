@@ -3,11 +3,11 @@ SamplerState voxelSampler : register(s0);
 
 cbuffer ConstantBuffer : register(b0)
 {
-    matrix worldMatrix;
-    matrix viewMatrix;
-    matrix projectionMatrix;
-    matrix worldviewprojection;
-    matrix invworldviewprojection;
+    float4x4 worldMatrix;
+    float4x4 viewMatrix;
+    float4x4 projectionMatrix;
+    float4x4 worldviewprojection;
+    float4x4 invworldviewprojection;
 };
 
 

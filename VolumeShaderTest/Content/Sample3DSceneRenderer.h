@@ -4,6 +4,7 @@
 #include "ShaderStructures.h"
 #include "..\Common\StepTimer.h"
 
+using namespace DirectX;
 namespace VolumeShaderTest
 {
 	// This sample renderer instantiates a basic rendering pipeline.
@@ -46,6 +47,11 @@ namespace VolumeShaderTest
 
 		// System resources for cube geometry.
 		ModelViewProjectionConstantBuffer	m_constantBufferData;
+		XMMATRIX	m_projectionMatrix;
+		XMMATRIX	m_viewMatrix;
+		XMMATRIX	m_worldMatrix;
+		XMMATRIX	m_worldViewProjectionMatrix;
+		XMMATRIX	m_invWorldViewProjectionMatrix;
 		uint32	m_indexCount;
 		uint32	m_vertexCount;
 
