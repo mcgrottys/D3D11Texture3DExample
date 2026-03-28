@@ -2,20 +2,21 @@
 
 namespace VolumeShaderTest
 {
-	// Constant buffer used to send MVP matrices to the vertex shader.
-	struct ModelViewProjectionConstantBuffer
-	{
-		DirectX::XMFLOAT4X4 worldMatrix;
-		DirectX::XMFLOAT4X4 viewMatrix;
-		DirectX::XMFLOAT4X4 projectionMatrix;
-		DirectX::XMFLOAT4X4 worldViewProjectionMatrix;
-		DirectX::XMFLOAT4X4 invWorldViewProjectionMatrix;
-	};
+    struct ModelViewProjectionConstantBuffer
+    {
+        DirectX::XMFLOAT4X4 worldMatrix;
+        DirectX::XMFLOAT4X4 viewMatrix;
+        DirectX::XMFLOAT4X4 projectionMatrix;
+        DirectX::XMFLOAT4X4 worldViewProjectionMatrix;
+        DirectX::XMFLOAT4X4 invWorldViewProjectionMatrix;
+        DirectX::XMFLOAT4X4 invWorldMatrix; // For local space transformation
+        DirectX::XMFLOAT4 cameraPosition;   // For ray origin
+        DirectX::XMFLOAT4 lightPosition;    // For animated self-shadowing
+    };
 
-	// Used to send per-vertex data to the vertex shader.
-	struct VertexPositionColor
-	{
-		DirectX::XMFLOAT3 pos;
-		DirectX::XMFLOAT3 texCoord;
-	};
+    struct VertexPositionColor
+    {
+        DirectX::XMFLOAT3 pos;
+        DirectX::XMFLOAT3 texCoord;
+    };
 }

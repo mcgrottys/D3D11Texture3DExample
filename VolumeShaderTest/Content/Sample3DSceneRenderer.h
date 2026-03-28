@@ -43,6 +43,7 @@ namespace VolumeShaderTest
 		Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>		m_volumeTextureView;
 		Microsoft::WRL::ComPtr<ID3D11SamplerState>		m_samplerState;
 		Microsoft::WRL::ComPtr<ID3D11BlendState>		m_blendState;
+		Microsoft::WRL::ComPtr<ID3D11DepthStencilState>		m_depthStencilState;
 		Microsoft::WRL::ComPtr<ID3D11RasterizerState>		m_rasterState;
 
 		// System resources for cube geometry.
